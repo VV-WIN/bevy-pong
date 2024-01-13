@@ -3,6 +3,9 @@ use bevy::sprite::MaterialMesh2dBundle;
 
 const BALL_SIZE: f32 = 5.;
 const BALL_SPEED: f32 = 5.;
+const PADDLE_SPEED: f32 = 1.;
+const PADDLE_HEIGHT: f32 = 10.;
+const PADDLE_WIDTH: f32 = 50.;
 
 #[derive(Component)]
 struct Ball;
@@ -16,6 +19,9 @@ struct Shape(Vec2);
 #[derive(Component)]
 struct Velocity(Vec2);
 
+#[derive(Component)]
+struct Paddle;
+
 #[derive(Bundle)]
 struct BallBundle {
     ball: Ball,
@@ -23,6 +29,11 @@ struct BallBundle {
     shape: Shape,
     velocity: Velocity
 }
+ #[derive(Bundle)]
+ struct PaddleBundle {
+     paddle: Paddle,
+     position: Position
+ }
 
 impl BallBundle {
     fn new(x: f32, y: f32) -> Self {
@@ -35,17 +46,24 @@ impl BallBundle {
     }
 }
 
+impl PaddleBundle {
+    fn new(x: f32, y: f32) -> Self {
+        Self {
+            paddle: Paddle,
+            position: Position(Vec2::new(x, y))
+        }
+    }
+}
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_systems(Startup, (spawn_ball, spawn_camera))
-        .add_systems(
-            Update,
-            (
-                move_ball,
-                project_positions.after(move_ball)
-            ),
-        )
+        .add_systems(Startup, (
+            spawn_ball,
+            spawn_camera,
+            spawn_paddles
+        ))
+        .add_systems(Update, move_ball)
         .run();
 }
 
@@ -75,6 +93,29 @@ fn spawn_ball(
 
     commands.spawn((
         BallBundle::new(1., 1.),
+        MaterialMesh2dBundle {
+            mesh: mesh_handle.into(),
+            material: material_handle,
+            ..default()
+        },
+    ));
+}
+
+fn spawn_paddles(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+) {
+    println!("Spawning paddles...");
+
+    let mesh = Mesh::from(shape::Quad::new(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)));
+    let material = ColorMaterial::from(Color::rgb(0., 1., 0.));
+
+    let mesh_handle = meshes.add(mesh);
+    let material_handle = materials.add(material);
+
+    commands.spawn((
+        PaddleBundle::new(20., -25.0),
         MaterialMesh2dBundle {
             mesh: mesh_handle.into(),
             material: material_handle,
