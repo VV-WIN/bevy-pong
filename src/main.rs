@@ -3,6 +3,10 @@ use bevy::{
     sprite::collide_aabb::{collide, Collision}, // TODO: Replace with Rapier 2D Physics
     sprite::MaterialMesh2dBundle,
 };
+use bevy_rapier2d::prelude::*;
+// With the current sprite collide_aabb there's an issue where the velocity of the ball exceeds the speed of the collision detection.
+// This causes the ball to pass through the paddle.
+// Rapier 2D Physics has a much better collision detection system. We'll use that instead. 
 
 const BALL_WIDTH: f32 = 10.;
 const BALL_SPEED: f32 = 5.; 
