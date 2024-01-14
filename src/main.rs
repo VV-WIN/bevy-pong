@@ -1,9 +1,11 @@
-use bevy::prelude::*;
-use bevy::sprite::MaterialMesh2dBundle;
-use bevy::sprite::collide_aabb::{collide, Collision};
+use bevy::{
+    prelude::*,
+    sprite::collide_aabb::{collide, Collision}, // TODO: Replace with Rapier 2D Physics
+    sprite::MaterialMesh2dBundle,
+};
 
-const BALL_SIZE: f32 = 5.;
-const BALL_SPEED: f32 = 5.;
+const BALL_WIDTH: f32 = 10.;
+const BALL_SPEED: f32 = 5.; 
 const PADDLE_SPEED: f32 = 1.; // Will come in handy when we start to move the paddles
 const PADDLE_WIDTH: f32 = 10.;
 const PADDLE_HEIGHT: f32 = 50.;
@@ -24,18 +26,18 @@ struct Velocity(Vec2);
 #[derive(Bundle)]
 struct BallBundle {
     ball: Ball,
-    position: Position,
     shape: Shape,
-    velocity: Velocity
+    velocity: Velocity,
+    position: Position
 }
 
 impl BallBundle {
     fn new(x: f32, y: f32) -> Self {
         Self {
             ball: Ball,
-            position: Position(Vec2::new(0., 0.)),
-            shape: Shape(Vec2::splat(BALL_SIZE)),
-            velocity: Velocity(Vec2::new(x, y))
+            shape: Shape(Vec2::new(BALL_WIDTH, BALL_WIDTH)),
+            velocity: Velocity(Vec2::new(x, y)),
+            position: Position(Vec2::new(0., 0.))
         }
     }
 }
@@ -47,8 +49,8 @@ struct Paddle;
 struct PaddleBundle {
     paddle: Paddle,
     shape: Shape,
-    position: Position,
     velocity: Velocity,
+    position: Position
 }
 
 impl PaddleBundle {
@@ -56,15 +58,20 @@ impl PaddleBundle {
         Self {
             paddle: Paddle,
             shape: Shape(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
-            position: Position(Vec2::new(x, y)),
             velocity: Velocity(Vec2::new(0., 0.)),
+            position: Position(Vec2::new(x, y))
         }
     }
 }
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_systems(Startup, (spawn_ball, spawn_camera, spawn_paddles))
+        .add_systems(Startup, (
+            spawn_ball, 
+            spawn_paddles,
+            spawn_camera, 
+        ))
         .add_systems(Update, (
             move_ball,
             project_positions.after(move_ball),
@@ -109,17 +116,18 @@ fn handle_collisions(
     }
 }
 
+fn move_ball(mut ball: Query<(&mut Position, &Velocity), With<Ball>>) {
+    if let Ok((mut position, velocity)) = ball.get_single_mut() {
+        position.0 += velocity.0 * BALL_SPEED;
+    }
+}
+
 fn project_positions(mut ball: Query<(&mut Transform, &Position)>) {
     for (mut transform, position) in &mut ball {
         transform.translation = position.0.extend(0.);
     }
 }
 
-fn move_ball(mut ball: Query<(&mut Position, &Velocity), With<Ball>>) {
-    if let Ok((mut position, velocity)) = ball.get_single_mut() {
-        position.0 += velocity.0 * BALL_SPEED;
-    }
-}
 
 fn spawn_ball(
     mut commands: Commands,
@@ -128,7 +136,7 @@ fn spawn_ball(
 ) {
     println!("Spawning ball...");
 
-    let mesh = Mesh::from(shape::Circle::new(BALL_SIZE));
+    let mesh = Mesh::from(shape::Circle::new(BALL_WIDTH / 2.0));
     let material = ColorMaterial::from(Color::rgb(1., 0., 0.));
 
     // Now our mesh shape is derived from the `Shape` we made as a new component
@@ -149,29 +157,43 @@ fn spawn_paddles(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    window: Query<&Window>,
 ) {
     println!("Spawning paddles...");
 
-    let mesh = Mesh::from(shape::Quad::new(Vec2::new(
-        PADDLE_WIDTH,
-        PADDLE_HEIGHT,
-    )));
+    if let Ok(window) = window.get_single() {
+        let window_width = window.resolution.width();
+        // right and left of the screen with a bit of padding
+        let padding = 50.;
+        let right_paddle_x = window_width / 2. - padding;
+        let left_paddle_x = -window_width / 2. + padding;
 
-    let material = ColorMaterial::from(Color::rgb(0., 1., 0.));
+        let mesh = Mesh::from(shape::Quad::new(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)));
+        let mesh_handle = meshes.add(mesh);
 
-    let mesh_handle = meshes.add(mesh);
-    let material_handle = materials.add(material);
+        let right_paddle_material = ColorMaterial::from(Color::rgb(0., 1., 0.));
+        let left_paddle_material = ColorMaterial::from(Color::rgb(0., 0., 1.));
 
-    commands.spawn((
-        PaddleBundle::new(20., -25.),
-        MaterialMesh2dBundle {
-            mesh: mesh_handle.into(),
-            material: material_handle,
-            ..default()
-        },
-    ));
+        commands.spawn((
+            PaddleBundle::new(right_paddle_x, 0.),
+            MaterialMesh2dBundle {
+                mesh: mesh_handle.clone().into(),
+                material: materials.add(right_paddle_material),
+                ..default()
+            },
+        ));
+
+        commands.spawn((
+            PaddleBundle::new(left_paddle_x, 0.),
+            MaterialMesh2dBundle {
+                mesh: mesh_handle.into(),
+                material: materials.add(left_paddle_material),
+                ..default()
+            },
+        ));
+    }
 }
 
 fn spawn_camera(mut commands: Commands) {
     commands.spawn_empty().insert(Camera2dBundle::default());
-}
+}   
