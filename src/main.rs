@@ -3,14 +3,15 @@ use bevy::{
     sprite::collide_aabb::{collide, Collision}, // TODO: Replace with Rapier 2D Physics
     sprite::MaterialMesh2dBundle,
 };
-use bevy_rapier2d::prelude::*;
+// use bevy_rapier2d::prelude::*;
+mod menu;
 // With the current sprite collide_aabb there's an issue where the velocity of the ball exceeds the speed of the collision detection.
 // This causes the ball to pass through the paddle.
 // Rapier 2D Physics has a much better collision detection system. We'll use that instead. 
 
 const BALL_WIDTH: f32 = 10.;
 const BALL_SPEED: f32 = 5.; 
-const PADDLE_SPEED: f32 = 1.; // Will come in handy when we start to move the paddles
+// const PADDLE_SPEED: f32 = 1.; // Will come in handy when we start to move the paddles
 const PADDLE_WIDTH: f32 = 10.;
 const PADDLE_HEIGHT: f32 = 50.;
 
@@ -68,6 +69,7 @@ impl PaddleBundle {
     }
 }
 
+ 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
@@ -81,6 +83,7 @@ fn main() {
             project_positions.after(move_ball),
             handle_collisions.after(move_ball),
         ))
+        .add_state::<GameState>()
         .run();
 }
 
@@ -201,3 +204,11 @@ fn spawn_paddles(
 fn spawn_camera(mut commands: Commands) {
     commands.spawn_empty().insert(Camera2dBundle::default());
 }   
+
+#[derive(Default, States, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum GameState {
+    #[default]
+    MainMenu,
+    // SettingsMenu,
+    // Playing,
+}
