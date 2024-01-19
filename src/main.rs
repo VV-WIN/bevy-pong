@@ -4,16 +4,17 @@ use bevy::{
     sprite::MaterialMesh2dBundle,
 };
 // use bevy_rapier2d::prelude::*;
-mod menu;
 // With the current sprite collide_aabb there's an issue where the velocity of the ball exceeds the speed of the collision detection.
 // This causes the ball to pass through the paddle.
 // Rapier 2D Physics has a much better collision detection system. We'll use that instead. 
+mod menu;
 
 const BALL_WIDTH: f32 = 10.;
 const BALL_SPEED: f32 = 5.; 
 // const PADDLE_SPEED: f32 = 1.; // Will come in handy when we start to move the paddles
 const PADDLE_WIDTH: f32 = 10.;
 const PADDLE_HEIGHT: f32 = 50.;
+const GUTTER_HEIGHT: f32 = 20.;
 
 #[derive(Component)]
 struct Ball;
@@ -27,6 +28,11 @@ struct Shape(Vec2);
 #[derive(Component)]
 struct Velocity(Vec2);
 
+#[derive(Component)]
+struct Paddle;
+
+#[derive(Component)]
+struct Gutter;
 
 #[derive(Bundle)]
 struct BallBundle {
@@ -47,9 +53,6 @@ impl BallBundle {
     }
 }
 
-#[derive(Component)]
-struct Paddle;
-
 #[derive(Bundle)]
 struct PaddleBundle {
     paddle: Paddle,
@@ -64,6 +67,23 @@ impl PaddleBundle {
             paddle: Paddle,
             shape: Shape(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
             velocity: Velocity(Vec2::new(0., 0.)),
+            position: Position(Vec2::new(x, y))
+        }
+    }
+}
+
+#[derive(Bundle)]
+struct GutterBundle {
+    gutter: Gutter,
+    shape: Shape,
+    position: Position
+}
+
+impl GutterBundle {
+    fn new(x: f32, y: f32) -> Self {
+        Self {
+            gutter: Gutter,
+            shape: Shape(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
             position: Position(Vec2::new(x, y))
         }
     }
@@ -195,6 +215,48 @@ fn spawn_paddles(
             MaterialMesh2dBundle {
                 mesh: mesh_handle.into(),
                 material: materials.add(left_paddle_material),
+                ..default()
+            },
+        ));
+    }
+}
+
+fn spawn_gutters(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    window: Query<&Window>,
+) {
+    println!("Spawning gutters...");
+
+    if let Ok(window) = window.get_single() {
+        let window_width = window.resolution.width();
+        let window_height = window.resolution.height();
+        // right and left of the screen with a bit of padding
+        let padding = 50.;
+        let right_gutter_x = window_width / 2. - padding;
+        let left_gutter_x = -window_width / 2. + padding;
+        let gutter_y = window_height / 2. - padding;
+
+        let mesh = Mesh::from(shape::Quad::new(Vec2::new(PADDLE_WIDTH, GUTTER_HEIGHT)));
+        let mesh_handle = meshes.add(mesh);
+
+        let gutter_material = ColorMaterial::from(Color::rgb(1., 1., 1.));
+
+        commands.spawn((
+            GutterBundle::new(right_gutter_x, gutter_y),
+            MaterialMesh2dBundle {
+                mesh: mesh_handle.clone().into(),
+                material: materials.add(gutter_material),
+                ..default()
+            },
+        ));
+
+        commands.spawn((
+            GutterBundle::new(left_gutter_x, gutter_y),
+            MaterialMesh2dBundle {
+                mesh: mesh_handle.into(),
+                material: materials.add(gutter_material),
                 ..default()
             },
         ));
