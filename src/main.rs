@@ -76,15 +76,15 @@ impl PaddleBundle {
 struct GutterBundle {
     gutter: Gutter,
     shape: Shape,
-    position: Position
+    position: Position,
 }
 
 impl GutterBundle {
-    fn new(x: f32, y: f32) -> Self {
+    fn new(x: f32, y: f32, w: f32) -> Self {
         Self {
             gutter: Gutter,
-            shape: Shape(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)),
-            position: Position(Vec2::new(x, y))
+            shape: Shape(Vec2::new(w, GUTTER_HEIGHT)),
+            position: Position(Vec2::new(x, y)),
         }
     }
 }
@@ -96,6 +96,7 @@ fn main() {
         .add_systems(Startup, (
             spawn_ball, 
             spawn_paddles,
+            spawn_gutters,
             spawn_camera, 
         ))
         .add_systems(Update, (
@@ -227,36 +228,31 @@ fn spawn_gutters(
     mut materials: ResMut<Assets<ColorMaterial>>,
     window: Query<&Window>,
 ) {
-    println!("Spawning gutters...");
-
     if let Ok(window) = window.get_single() {
         let window_width = window.resolution.width();
         let window_height = window.resolution.height();
-        // right and left of the screen with a bit of padding
-        let padding = 50.;
-        let right_gutter_x = window_width / 2. - padding;
-        let left_gutter_x = -window_width / 2. + padding;
-        let gutter_y = window_height / 2. - padding;
+        let top_gutter_y = window_height / 2. - GUTTER_HEIGHT / 2.;
+        let bottom_gutter_y = -window_height / 2. + GUTTER_HEIGHT / 2.;
 
-        let mesh = Mesh::from(shape::Quad::new(Vec2::new(PADDLE_WIDTH, GUTTER_HEIGHT)));
-        let mesh_handle = meshes.add(mesh);
-
-        let gutter_material = ColorMaterial::from(Color::rgb(1., 1., 1.));
+        let top_gutter = GutterBundle::new(0., top_gutter_y, window_width);
+        let bottom_gutter = GutterBundle::new(0., bottom_gutter_y, window_width);
+        let mesh = meshes.add(Mesh::from(shape::Quad::new(top_gutter.shape.0)));
+        let material = materials.add(ColorMaterial::from(Color::rgb(0., 0., 0.)));
 
         commands.spawn((
-            GutterBundle::new(right_gutter_x, gutter_y),
+            top_gutter,
             MaterialMesh2dBundle {
-                mesh: mesh_handle.clone().into(),
-                material: materials.add(gutter_material),
+                mesh: mesh.clone().into(),
+                material: material.clone(),
                 ..default()
             },
         ));
 
         commands.spawn((
-            GutterBundle::new(left_gutter_x, gutter_y),
+            bottom_gutter,
             MaterialMesh2dBundle {
-                mesh: mesh_handle.into(),
-                material: materials.add(gutter_material),
+                mesh: mesh.clone().into(),
+                material: material.clone(),
                 ..default()
             },
         ));
