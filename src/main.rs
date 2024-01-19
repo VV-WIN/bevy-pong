@@ -11,13 +11,33 @@ mod menu;
 
 const BALL_WIDTH: f32 = 10.;
 const BALL_SPEED: f32 = 5.; 
-// const PADDLE_SPEED: f32 = 1.; // Will come in handy when we start to move the paddles
+const PADDLE_SPEED: f32 = 1.;
 const PADDLE_WIDTH: f32 = 10.;
 const PADDLE_HEIGHT: f32 = 50.;
 const GUTTER_HEIGHT: f32 = 20.;
 
+#[derive(Default, States, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum GameState {
+    #[default]
+    MainMenu,
+    // SettingsMenu,
+    // Playing,
+}
+
 #[derive(Component)]
 struct Ball;
+
+#[derive(Component)]
+struct Paddle;
+
+#[derive(Component)]
+struct Gutter;
+
+#[derive(Component)]
+struct Player;
+
+#[derive(Component)]
+struct Ai;
 
 #[derive(Component)]
 struct Position(Vec2);
@@ -27,12 +47,6 @@ struct Shape(Vec2);
 
 #[derive(Component)]
 struct Velocity(Vec2);
-
-#[derive(Component)]
-struct Paddle;
-
-#[derive(Component)]
-struct Gutter;
 
 #[derive(Bundle)]
 struct BallBundle {
@@ -88,7 +102,6 @@ impl GutterBundle {
         }
     }
 }
-
  
 fn main() {
     App::new()
@@ -101,6 +114,8 @@ fn main() {
         ))
         .add_systems(Update, (
             move_ball,
+            handle_player_input,
+            move_paddles.after(handle_player_input),
             project_positions.after(move_ball),
             handle_collisions.after(move_ball),
         ))
@@ -144,9 +159,40 @@ fn handle_collisions(
     }
 }
 
+fn handle_player_input(
+    keyboard_input: Res<Input<KeyCode>>,
+    mut paddle: Query<(&mut Velocity, &Paddle), With<Player>>,
+) {
+    if let Ok((mut velocity, _)) = paddle.get_single_mut() {
+        if keyboard_input.pressed(KeyCode::Up) {
+            velocity.0.y = PADDLE_SPEED;
+        } else if keyboard_input.pressed(KeyCode::Down) {
+            velocity.0.y = -PADDLE_SPEED;
+        } else {
+            velocity.0.y = 0.;
+        }
+    }  
+} 
+
 fn move_ball(mut ball: Query<(&mut Position, &Velocity), With<Ball>>) {
     if let Ok((mut position, velocity)) = ball.get_single_mut() {
         position.0 += velocity.0 * BALL_SPEED;
+    }
+}
+
+fn move_paddles(
+    mut paddle: Query<(&mut Position, &Velocity), With<Paddle>>,
+    window: Query<&Window>,
+) {
+    if let Ok(window) = window.get_single() {
+        let window_height = window.resolution.height();
+
+        for (mut position, velocity) in &mut paddle {
+            let new_position = position.0 + velocity.0 * PADDLE_SPEED;
+            if new_position.y.abs() < window_height / 2. - GUTTER_HEIGHT - PADDLE_HEIGHT / 2. {
+                position.0 = new_position;
+            }
+        }
     }
 }
 
@@ -155,7 +201,6 @@ fn project_positions(mut ball: Query<(&mut Transform, &Position)>) {
         transform.translation = position.0.extend(0.);
     }
 }
-
 
 fn spawn_ball(
     mut commands: Commands,
@@ -203,6 +248,7 @@ fn spawn_paddles(
         let left_paddle_material = ColorMaterial::from(Color::rgb(0., 0., 1.));
 
         commands.spawn((
+            Player,
             PaddleBundle::new(right_paddle_x, 0.),
             MaterialMesh2dBundle {
                 mesh: mesh_handle.clone().into(),
@@ -262,11 +308,3 @@ fn spawn_gutters(
 fn spawn_camera(mut commands: Commands) {
     commands.spawn_empty().insert(Camera2dBundle::default());
 }   
-
-#[derive(Default, States, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum GameState {
-    #[default]
-    MainMenu,
-    // SettingsMenu,
-    // Playing,
-}
