@@ -11,18 +11,29 @@ mod menu;
 
 const BALL_WIDTH: f32 = 10.;
 const BALL_SPEED: f32 = 5.; 
-const PADDLE_SPEED: f32 = 1.;
+const PADDLE_SPEED: f32 = 5.;
 const PADDLE_WIDTH: f32 = 10.;
 const PADDLE_HEIGHT: f32 = 50.;
 const GUTTER_HEIGHT: f32 = 20.;
 
-#[derive(Default, States, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-enum GameState {
-    #[default]
-    MainMenu,
-    // SettingsMenu,
-    // Playing,
+// Colors 
+const BALL_COLOR: Color = Color::rgb(1., 0., 0.);
+
+enum Scorer {
+    Ai,
+    Player,
 }
+
+#[derive(Component)]
+struct PlayerScore;
+
+#[derive(Component)]
+struct AiScore;
+#[derive(Component)]
+struct PlayerScoreboard;
+
+#[derive(Component)]
+struct AiScoreboard;
 
 #[derive(Component)]
 struct Ball;
@@ -38,6 +49,15 @@ struct Player;
 
 #[derive(Component)]
 struct Ai;
+
+#[derive(Event)]
+struct Scored(Scorer);
+
+#[derive(Resource, Default)]
+struct Score {
+    ai: u32,
+    player: u32,
+}
 
 #[derive(Component)]
 struct Position(Vec2);
@@ -102,25 +122,87 @@ impl GutterBundle {
         }
     }
 }
- 
+
+#[derive(Default, States, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum GameState {
+    #[default]
+    MainMenu,
+    // SettingsMenu,
+    // Playing,
+}
+
+
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
-        .add_systems(Startup, (
-            spawn_ball, 
-            spawn_paddles,
-            spawn_gutters,
-            spawn_camera, 
-        ))
-        .add_systems(Update, (
-            move_ball,
-            handle_player_input,
-            move_paddles.after(handle_player_input),
-            project_positions.after(move_ball),
-            handle_collisions.after(move_ball),
-        ))
-        .add_state::<GameState>()
+        .init_resource::<Score>()
+        .add_event::<Scored>()
+        .add_systems(
+            Startup,
+            (spawn_ball, spawn_camera, spawn_paddles, spawn_gutters, spawn_scoreboard),
+        )
+        .add_systems(
+            Update,
+            (
+                move_ball,
+                handle_player_input,
+                detect_scoring,
+                move_ai,
+                reset_ball.after(detect_scoring),
+                update_score.after(detect_scoring),
+                update_scoreboard.after(update_score),
+                move_paddles.after(handle_player_input),
+                project_positions.after(move_ball),
+                handle_collisions.after(move_ball),
+            ),
+        )
         .run();
+}
+
+fn detect_scoring(
+    mut ball: Query<&mut Position, With<Ball>>,
+    window: Query<&Window>,
+    mut events: EventWriter<Scored>,
+) {
+    if let Ok(window) = window.get_single() {
+        let window_width = window.resolution.width();
+
+        if let Ok(ball) = ball.get_single_mut() {
+            // Here we write the events using our EventWriter
+            if ball.0.x > window_width / 2. {
+                events.send(Scored(Scorer::Ai));
+            } else if ball.0.x < -window_width / 2. {
+                events.send(Scored(Scorer::Player));
+            }
+        }
+    }
+}
+
+fn update_score(mut score: ResMut<Score>, mut events: EventReader<Scored>) {
+    for event in events.read() {
+        match event.0 {
+            Scorer::Ai => score.ai += 1,
+            Scorer::Player => score.player += 1,
+        }
+    }
+
+    println!("Score: {} - {}", score.player, score.ai);
+}
+
+fn update_scoreboard(
+    mut player_score: Query<&mut Text, With<PlayerScoreboard>>,
+    mut ai_score: Query<&mut Text, (With<AiScoreboard>, Without<PlayerScoreboard>)>,
+    score: Res<Score>,
+) {
+    if score.is_changed() {
+        if let Ok(mut player_score) = player_score.get_single_mut() {
+            player_score.sections[0].value = score.player.to_string();
+        }
+
+        if let Ok(mut ai_score) = ai_score.get_single_mut() {
+            ai_score.sections[0].value = score.ai.to_string();
+        }
+    }
 }
 
 fn handle_collisions(
@@ -132,10 +214,10 @@ fn handle_collisions(
     if let Ok((mut ball_velocity, ball_position, ball_shape)) = ball.get_single_mut() {
         for (position, shape) in &other_things {
             if let Some(collision) = collide(
-                ball_position.0.extend(0.), // position_a (Vec3)
-                ball_shape.0,               // size_a (Vec2)
-                position.0.extend(0.),      // position_b (Vec3)
-                shape.0,                    // size_b (Vec2)
+                ball_position.0.extend(0.),
+                ball_shape.0,
+                position.0.extend(0.),
+                shape.0,
             ) {
                 match collision {
                     Collision::Left => {
@@ -171,12 +253,46 @@ fn handle_player_input(
         } else {
             velocity.0.y = 0.;
         }
-    }  
-} 
+    }
+}
+
+fn move_ai(
+    mut ai: Query<(&mut Velocity, &Position), With<Ai>>,
+    ball: Query<&Position, With<Ball>>,
+) {
+    if let Ok((mut velocity, position)) = ai.get_single_mut() {
+        if let Ok(ball_position) = ball.get_single() {
+            let a_to_b = ball_position.0 - position.0;
+            velocity.0.y = a_to_b.y.signum();
+        }
+    }
+}
+
 
 fn move_ball(mut ball: Query<(&mut Position, &Velocity), With<Ball>>) {
     if let Ok((mut position, velocity)) = ball.get_single_mut() {
         position.0 += velocity.0 * BALL_SPEED;
+    }
+}
+
+fn reset_ball(
+    mut ball: Query<(&mut Position, &mut Velocity), With<Ball>>,
+    mut events: EventReader<Scored>,
+) {
+    // Here we read the events using an EventReader
+    for event in events.read() {
+        if let Ok((mut position, mut velocity)) = ball.get_single_mut() {
+            match event.0 {
+                Scorer::Ai => {
+                    position.0 = Vec2::new(0., 0.);
+                    velocity.0 = Vec2::new(-1., 1.);
+                }
+                Scorer::Player => {
+                    position.0 = Vec2::new(0., 0.);
+                    velocity.0 = Vec2::new(1., 1.);
+                }
+            }
+        }
     }
 }
 
@@ -210,7 +326,7 @@ fn spawn_ball(
     println!("Spawning ball...");
 
     let mesh = Mesh::from(shape::Circle::new(BALL_WIDTH / 2.0));
-    let material = ColorMaterial::from(Color::rgb(1., 0., 0.));
+    let material = ColorMaterial::from(BALL_COLOR);
 
     // Now our mesh shape is derived from the `Shape` we made as a new component
     let mesh_handle = meshes.add(mesh);
@@ -241,27 +357,31 @@ fn spawn_paddles(
         let right_paddle_x = window_width / 2. - padding;
         let left_paddle_x = -window_width / 2. + padding;
 
-        let mesh = Mesh::from(shape::Quad::new(Vec2::new(PADDLE_WIDTH, PADDLE_HEIGHT)));
-        let mesh_handle = meshes.add(mesh);
+        let mesh = Mesh::from(shape::Quad::new(Vec2::new(
+            PADDLE_WIDTH,
+            PADDLE_HEIGHT,
+        )));
 
-        let right_paddle_material = ColorMaterial::from(Color::rgb(0., 1., 0.));
-        let left_paddle_material = ColorMaterial::from(Color::rgb(0., 0., 1.));
+        let mesh_handle = meshes.add(mesh);
 
         commands.spawn((
             Player,
             PaddleBundle::new(right_paddle_x, 0.),
             MaterialMesh2dBundle {
                 mesh: mesh_handle.clone().into(),
-                material: materials.add(right_paddle_material),
+                material: materials.add(ColorMaterial::from(Color::rgb(0., 1., 0.))),
                 ..default()
             },
         ));
 
         commands.spawn((
+            // Adding the Ai component here so we can query for this specific
+            // paddle in our `move_ai` system
+            Ai,
             PaddleBundle::new(left_paddle_x, 0.),
             MaterialMesh2dBundle {
                 mesh: mesh_handle.into(),
-                material: materials.add(left_paddle_material),
+                material: materials.add(ColorMaterial::from(Color::rgb(0., 0., 1.))),
                 ..default()
             },
         ));
@@ -274,6 +394,8 @@ fn spawn_gutters(
     mut materials: ResMut<Assets<ColorMaterial>>,
     window: Query<&Window>,
 ) {
+    println!("Spawning gutters...");
+
     if let Ok(window) = window.get_single() {
         let window_width = window.resolution.width();
         let window_height = window.resolution.height();
@@ -303,6 +425,52 @@ fn spawn_gutters(
             },
         ));
     }
+}
+
+fn spawn_scoreboard(
+    mut commands: Commands,
+) {
+    commands.spawn((
+        PlayerScoreboard,
+        // Create a TextBundle that has a Text with a single section.
+        TextBundle::from_section(
+            // Accepts a `String` or any type that converts into a `String`, such as `&str`
+            "0",
+            TextStyle {
+                font_size: 72.0,
+                color: Color::WHITE,
+                ..default()
+            },
+        ) // Set the alignment of the Text
+        .with_text_alignment(TextAlignment::Center)
+        // Set the style of the TextBundle itself.
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            top: Val::Px(5.0),
+            right: Val::Px(15.0),
+            ..default()
+        })
+    ));
+
+    commands.spawn((
+        AiScoreboard,
+        TextBundle::from_section(
+            "0",
+            TextStyle {
+                font_size: 72.0,
+                color: Color::WHITE,
+                ..default()
+            },
+        )
+        .with_text_alignment(TextAlignment::Center)
+        .with_style(Style {
+            position_type: PositionType::Absolute,
+            top: Val::Px(5.0),
+            left: Val::Px(15.0),
+            ..default()
+        })
+    ));
+
 }
 
 fn spawn_camera(mut commands: Commands) {
